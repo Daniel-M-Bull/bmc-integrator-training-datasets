@@ -10,6 +10,6 @@ A small collection of public datasets for experimenting with model training work
 
 ## Dataset availability
 
-The collection currently catalogs public source files by URL; the CSV copies are **not yet present** in this repository. Use the source URLs in the category READMEs and manifest to fetch data, and update the manifest status when reviewed snapshots are added. Check each source's license and terms before use. Some upstream datasets may have terms that differ from this repository.
+CSV snapshots are included in the classification and regression folders. The manifest records each dataset's source URL and target. Check each source's license and terms before use; upstream terms may differ from this repository.
 
 This repository is intended to collect datasets for model-training workflows using BMC Integrator as the workflow controller. It does not contain model code or workflow definitions.

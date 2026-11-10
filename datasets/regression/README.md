@@ -1,6 +1,6 @@
 # Regression datasets
 
-Public datasets suitable for regression practice. These files are linked at their original sources; download the source data as part of your workflow or place a reviewed copy in this folder if your use case requires a local snapshot.
+Public datasets suitable for regression practice. CSV snapshots are included in this folder; the table below links to their public sources for provenance. Check source terms before use.
 
 | Dataset | Example target | Source |
 | --- | --- | --- |

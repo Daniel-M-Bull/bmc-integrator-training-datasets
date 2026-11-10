@@ -7,15 +7,15 @@
       "target": "Class",
       "filename": "datasets/classification/breast_cancer_wdbc.csv",
       "source_url": "https://raw.githubusercontent.com/selva86/datasets/master/BreastCancer.csv",
-      "status": "source_link_only"
+      "status": "included"
     },
     {
       "name": "Wine recognition",
       "task": "classification",
       "target": "cultivar class (first column; source file is headerless)",
       "filename": "datasets/classification/wine.csv",
-      "source_url": "https://archive.ics.uci.edu/ml/machine-learning-databases/wine/wine.data",
-      "status": "source_link_only"
+      "source_url": "https://archive.ics.uci.edu/static/public/109/wine.zip",
+      "status": "included"
     },
     {
       "name": "Iris",
@@ -23,7 +23,7 @@
       "target": "species",
       "filename": "datasets/classification/iris.csv",
       "source_url": "https://raw.githubusercontent.com/mwaskom/seaborn-data/master/iris.csv",
-      "status": "source_link_only"
+      "status": "included"
     },
     {
       "name": "Boston Housing",
@@ -31,7 +31,7 @@
       "target": "medv",
       "filename": "datasets/regression/boston_housing.csv",
       "source_url": "https://raw.githubusercontent.com/selva86/datasets/master/BostonHousing.csv",
-      "status": "source_link_only"
+      "status": "included"
     },
     {
       "name": "Auto MPG",
@@ -39,7 +39,7 @@
       "target": "mpg",
       "filename": "datasets/regression/auto_mpg.csv",
       "source_url": "https://raw.githubusercontent.com/mwaskom/seaborn-data/master/mpg.csv",
-      "status": "source_link_only"
+      "status": "included"
     },
     {
       "name": "Tips",
@@ -47,7 +47,7 @@
       "target": "tip",
       "filename": "datasets/regression/tips.csv",
       "source_url": "https://raw.githubusercontent.com/mwaskom/seaborn-data/master/tips.csv",
-      "status": "source_link_only"
+      "status": "included"
     }
   ]
 }
