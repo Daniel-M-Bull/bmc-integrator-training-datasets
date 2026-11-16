@@ -2,50 +2,56 @@
   "purpose": "Public datasets for model-training workflows orchestrated by BMC Integrator.",
   "datasets": [
     {
+      "id": "breast_cancer_wdbc",
       "name": "Wisconsin Breast Cancer Diagnostic (WBCD)",
       "task": "classification",
       "target": "Class",
-      "filename": "datasets/classification/breast_cancer_wdbc.csv",
+      "filename": "datasets/classification/breast_cancer_wdbc/breast_cancer_wdbc.csv",
       "source_url": "https://raw.githubusercontent.com/selva86/datasets/master/BreastCancer.csv",
       "status": "included"
     },
     {
+      "id": "wine",
       "name": "Wine recognition",
       "task": "classification",
       "target": "cultivar class (first column; source file is headerless)",
-      "filename": "datasets/classification/wine.csv",
+      "filename": "datasets/classification/wine/wine.csv",
       "source_url": "https://archive.ics.uci.edu/static/public/109/wine.zip",
       "status": "included"
     },
     {
+      "id": "iris",
       "name": "Iris",
       "task": "classification",
       "target": "species",
-      "filename": "datasets/classification/iris.csv",
+      "filename": "datasets/classification/iris/iris.csv",
       "source_url": "https://raw.githubusercontent.com/mwaskom/seaborn-data/master/iris.csv",
       "status": "included"
     },
     {
+      "id": "boston_housing",
       "name": "Boston Housing",
       "task": "regression",
       "target": "medv",
-      "filename": "datasets/regression/boston_housing.csv",
+      "filename": "datasets/regression/boston_housing/boston_housing.csv",
       "source_url": "https://raw.githubusercontent.com/selva86/datasets/master/BostonHousing.csv",
       "status": "included"
     },
     {
+      "id": "auto_mpg",
       "name": "Auto MPG",
       "task": "regression",
       "target": "mpg",
-      "filename": "datasets/regression/auto_mpg.csv",
+      "filename": "datasets/regression/auto_mpg/auto_mpg.csv",
       "source_url": "https://raw.githubusercontent.com/mwaskom/seaborn-data/master/mpg.csv",
       "status": "included"
     },
     {
+      "id": "tips",
       "name": "Tips",
       "task": "regression",
       "target": "tip",
-      "filename": "datasets/regression/tips.csv",
+      "filename": "datasets/regression/tips/tips.csv",
       "source_url": "https://raw.githubusercontent.com/mwaskom/seaborn-data/master/tips.csv",
       "status": "included"
     }

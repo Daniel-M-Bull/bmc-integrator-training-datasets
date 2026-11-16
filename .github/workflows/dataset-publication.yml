@@ -1,0 +1,87 @@
+name: Dataset publication trigger
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "datasets/**/_READY"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dataset-publish-${{ github.ref }}-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  validate-and-prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      dataset_id: ${{ steps.dataset.outputs.dataset_id }}
+      category: ${{ steps.dataset.outputs.category }}
+      dataset_path: ${{ steps.dataset.outputs.dataset_path }}
+      commit_sha: ${{ steps.dataset.outputs.commit_sha }}
+    steps:
+      - name: Check out published revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Identify and validate published dataset
+        id: dataset
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            echo "Manual run: provide a marker path via workflow inputs only after this workflow is extended."
+            exit 1
+          fi
+
+          marker="$(git diff-tree --no-commit-id --name-only -r "${GITHUB_SHA}" | grep -E '^datasets/(classification|regression)/[^/]+/_READY$' | head -n 1 || true)"
+          if [[ -z "$marker" ]]; then
+            echo "No dataset _READY marker was added in this commit."
+            exit 1
+          fi
+
+          dataset_path="$(dirname "$marker")"
+          dataset_id="$(basename "$dataset_path")"
+          category="$(basename "$(dirname "$dataset_path")")"
+
+          if [[ "$category" != "classification" && "$category" != "regression" ]]; then
+            echo "Unsupported category: $category"
+            exit 1
+          fi
+
+          csv_count="$(find "$dataset_path" -maxdepth 1 -type f -name '*.csv' | wc -l)"
+          if [[ "$csv_count" -lt 1 ]]; then
+            echo "Marker exists but no CSV file was found in $dataset_path"
+            exit 1
+          fi
+
+          echo "dataset_id=$dataset_id" >> "$GITHUB_OUTPUT"
+          echo "category=$category" >> "$GITHUB_OUTPUT"
+          echo "dataset_path=$dataset_path" >> "$GITHUB_OUTPUT"
+          echo "commit_sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Publish event metadata
+        env:
+          DATASET_ID: ${{ steps.dataset.outputs.dataset_id }}
+          CATEGORY: ${{ steps.dataset.outputs.category }}
+          DATASET_PATH: ${{ steps.dataset.outputs.dataset_path }}
+          COMMIT_SHA: ${{ steps.dataset.outputs.commit_sha }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          {
+            echo "Dataset publication validated."
+            echo "dataset_id=$DATASET_ID"
+            echo "category=$CATEGORY"
+            echo "dataset_path=$DATASET_PATH"
+            echo "repository=$REPOSITORY"
+            echo "commit_sha=$COMMIT_SHA"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Control-M API invocation is intentionally not enabled yet:
+      # confirm the Control-M Automation API endpoint, authentication method,
+      # Control-M instance name, deployed folder name and exact run/order body.
+      # Store credentials in GitHub Actions secrets; never commit them here.
