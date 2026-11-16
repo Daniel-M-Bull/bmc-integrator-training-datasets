@@ -3,11 +3,17 @@
   "datasets": [
     {
       "id": "breast_cancer_wdbc",
-      "name": "Wisconsin Breast Cancer Diagnostic (WBCD)",
+      "name": "Breast Cancer Wisconsin (Diagnostic) — WDBC",
       "task": "classification",
-      "target": "Class",
+      "target": "diagnosis",
+      "target_values": ["B (benign)", "M (malignant)"],
+      "records": 569,
+      "features": 30,
       "filename": "datasets/classification/breast_cancer_wdbc/breast_cancer_wdbc.csv",
-      "source_url": "https://raw.githubusercontent.com/selva86/datasets/master/BreastCancer.csv",
+      "source_url": "https://archive.ics.uci.edu/dataset/17/breast-cancer-wisconsin-diagnostic",
+      "source_file": "wdbc.data",
+      "notes": "CSV contains diagnosis plus the 30 numeric features. The original UCI ID field is omitted. Diagnosis is represented as B or M.",
+      "license": "CC BY 4.0",
       "status": "included"
     },
     {

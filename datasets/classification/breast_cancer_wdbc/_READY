@@ -1,0 +1,4 @@
+validated: Breast Cancer Wisconsin (Diagnostic) WDBC
+records: 569
+features: 30
+target: diagnosis (B/M)
