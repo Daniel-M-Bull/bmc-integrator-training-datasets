@@ -5,7 +5,6 @@ on:
     branches: [main]
     paths:
       - "datasets/**/_READY"
-  workflow_dispatch:
 
 permissions:
   contents: read
@@ -27,33 +26,29 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
+          fetch-depth: 0
 
       - name: Identify and validate published dataset
         id: dataset
         shell: bash
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
         run: |
           set -euo pipefail
-          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
-            echo "Manual run: provide a marker path via workflow inputs only after this workflow is extended."
+          marker_list="$(git diff --name-only "$BEFORE_SHA" "$GITHUB_SHA" | grep -E '^datasets/(classification|regression)/[^/]+/_READY$' || true)"
+          marker_count="$(printf '%s\n' "$marker_list" | sed '/^$/d' | wc -l | tr -d ' ')"
+
+          if [[ "$marker_count" -ne 1 ]]; then
+            echo "Expected exactly one newly published _READY marker per push; found $marker_count."
             exit 1
           fi
 
-          marker="$(git diff-tree --no-commit-id --name-only -r "${GITHUB_SHA}" | grep -E '^datasets/(classification|regression)/[^/]+/_READY$' | head -n 1 || true)"
-          if [[ -z "$marker" ]]; then
-            echo "No dataset _READY marker was added in this commit."
-            exit 1
-          fi
-
+          marker="$marker_list"
           dataset_path="$(dirname "$marker")"
           dataset_id="$(basename "$dataset_path")"
           category="$(basename "$(dirname "$dataset_path")")"
 
-          if [[ "$category" != "classification" && "$category" != "regression" ]]; then
-            echo "Unsupported category: $category"
-            exit 1
-          fi
-
-          csv_count="$(find "$dataset_path" -maxdepth 1 -type f -name '*.csv' | wc -l)"
+          csv_count="$(find "$dataset_path" -maxdepth 1 -type f -name '*.csv' | wc -l | tr -d ' ')"
           if [[ "$csv_count" -lt 1 ]]; then
             echo "Marker exists but no CSV file was found in $dataset_path"
             exit 1
@@ -82,6 +77,6 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       # Control-M API invocation is intentionally not enabled yet:
-      # confirm the Control-M Automation API endpoint, authentication method,
-      # Control-M instance name, deployed folder name and exact run/order body.
+      # confirm the Control-M Automation API Swagger request body and runtime
+      # settings before adding the POST /automation-api/run/order step.
       # Store credentials in GitHub Actions secrets; never commit them here.

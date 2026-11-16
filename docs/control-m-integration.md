@@ -7,8 +7,9 @@ Each dataset lives in its own folder under `datasets/classification/` or
 folder is complete. The workflow listens only for `datasets/**/_READY`, so
 intermediate uploads do not start processing.
 
-The marker must be committed in the same push as, or after, the dataset files.
-For reliable operation, publish the data files and marker in one commit.
+Publish one dataset per push. Include its data files and its `_READY` marker in
+the same push, with the marker added last. The workflow rejects pushes that add
+zero or more than one marker.
 
 ## GitHub Actions event metadata
 
