@@ -1,0 +1,9 @@
+name: Prueba Control-M
+on:
+  workflow_dispatch:
+jobs:
+  saludo:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Hola desde Control-M"
+      - run: sleep 10
