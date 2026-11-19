@@ -1,82 +1,198 @@
-name: Dataset publication trigger
+name: Dataset publication to OneLake
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "datasets/**/_READY"
+  workflow_dispatch:
+    inputs:
+      dataset_id:
+        description: "Dataset folder name under datasets/classification or datasets/regression"
+        required: true
+        type: string
+      source_ref:
+        description: "Git branch, tag, or commit to publish (defaults to the dispatched commit)"
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: read
 
 concurrency:
-  group: dataset-publish-${{ github.ref }}-${{ github.sha }}
+  group: dataset-publish-${{ github.workflow }}-${{ inputs.dataset_id }}
   cancel-in-progress: false
 
 jobs:
-  validate-and-prepare:
+  publish-to-onelake:
     runs-on: ubuntu-latest
-    outputs:
-      dataset_id: ${{ steps.dataset.outputs.dataset_id }}
-      category: ${{ steps.dataset.outputs.category }}
-      dataset_path: ${{ steps.dataset.outputs.dataset_path }}
-      commit_sha: ${{ steps.dataset.outputs.commit_sha }}
     steps:
-      - name: Check out published revision
+      - name: Check out requested dataset revision
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.sha }}
-          fetch-depth: 0
+          ref: ${{ inputs.source_ref || github.sha }}
+          fetch-depth: 1
 
-      - name: Identify and validate published dataset
+      - name: Validate dataset and locate CSV
         id: dataset
         shell: bash
         env:
-          BEFORE_SHA: ${{ github.event.before }}
+          DATASET_ID: ${{ inputs.dataset_id }}
         run: |
           set -euo pipefail
-          marker_list="$(git diff --name-only "$BEFORE_SHA" "$GITHUB_SHA" | grep -E '^datasets/(classification|regression)/[^/]+/_READY$' || true)"
-          marker_count="$(printf '%s\n' "$marker_list" | sed '/^$/d' | wc -l | tr -d ' ')"
 
-          if [[ "$marker_count" -ne 1 ]]; then
-            echo "Expected exactly one newly published _READY marker per push; found $marker_count."
+          if [[ ! "$DATASET_ID" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+            echo "Invalid dataset_id. Use only letters, numbers, underscores, and hyphens."
             exit 1
           fi
 
-          marker="$marker_list"
-          dataset_path="$(dirname "$marker")"
-          dataset_id="$(basename "$dataset_path")"
+          matches=()
+          for category in classification regression; do
+            candidate="datasets/$category/$DATASET_ID"
+            if [[ -d "$candidate" ]]; then
+              matches+=("$candidate")
+            fi
+          done
+
+          if [[ "${#matches[@]}" -ne 1 ]]; then
+            echo "Expected exactly one dataset folder for '$DATASET_ID'; found ${#matches[@]}."
+            exit 1
+          fi
+
+          dataset_path="${matches[0]}"
           category="$(basename "$(dirname "$dataset_path")")"
 
-          csv_count="$(find "$dataset_path" -maxdepth 1 -type f -name '*.csv' | wc -l | tr -d ' ')"
-          if [[ "$csv_count" -lt 1 ]]; then
-            echo "Marker exists but no CSV file was found in $dataset_path"
+          if [[ ! -f "$dataset_path/_READY" ]]; then
+            echo "Dataset is not marked as ready: $dataset_path/_READY"
             exit 1
           fi
 
-          echo "dataset_id=$dataset_id" >> "$GITHUB_OUTPUT"
+          csv_files=("$dataset_path"/*.csv)
+          if [[ ! -e "${csv_files[0]}" || "${#csv_files[@]}" -ne 1 ]]; then
+            echo "Expected exactly one CSV file in $dataset_path."
+            exit 1
+          fi
+
+          csv_file="${csv_files[0]}"
+          echo "dataset_id=$DATASET_ID" >> "$GITHUB_OUTPUT"
           echo "category=$category" >> "$GITHUB_OUTPUT"
           echo "dataset_path=$dataset_path" >> "$GITHUB_OUTPUT"
-          echo "commit_sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+          echo "csv_file=$csv_file" >> "$GITHUB_OUTPUT"
+          echo "file_name=$(basename "$csv_file")" >> "$GITHUB_OUTPUT"
+          echo "commit_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
-      - name: Publish event metadata
+      - name: Obtain Microsoft Entra access token
+        id: auth
+        shell: bash
+        env:
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+        run: |
+          set -euo pipefail
+
+          for secret_name in AZURE_TENANT_ID AZURE_CLIENT_ID AZURE_CLIENT_SECRET; do
+            if [[ -z "${!secret_name:-}" ]]; then
+              echo "Missing GitHub Actions secret: $secret_name"
+              exit 1
+            fi
+          done
+
+          token_response="$(curl --fail-with-body --silent --show-error \
+            -X POST "https://login.microsoftonline.com/$AZURE_TENANT_ID/oauth2/v2.0/token" \
+            -H "Content-Type: application/x-www-form-urlencoded" \
+            --data-urlencode "client_id=$AZURE_CLIENT_ID" \
+            --data-urlencode "client_secret=$AZURE_CLIENT_SECRET" \
+            --data-urlencode "scope=https://storage.azure.com/.default" \
+            --data-urlencode "grant_type=client_credentials")"
+
+          access_token="$(jq -r '.access_token // empty' <<< "$token_response")"
+          if [[ -z "$access_token" ]]; then
+            echo "Microsoft Entra did not return an access token."
+            exit 1
+          fi
+          echo "::add-mask::$access_token"
+          echo "access_token=$access_token" >> "$GITHUB_OUTPUT"
+
+      - name: Upload CSV to OneLake
+        shell: bash
+        env:
+          ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
+          ONELAKE_WORKSPACE: ${{ secrets.ONELAKE_WORKSPACE }}
+          ONELAKE_LAKEHOUSE: ${{ secrets.ONELAKE_LAKEHOUSE }}
+          CATEGORY: ${{ steps.dataset.outputs.category }}
+          DATASET_ID: ${{ steps.dataset.outputs.dataset_id }}
+          CSV_FILE: ${{ steps.dataset.outputs.csv_file }}
+          FILE_NAME: ${{ steps.dataset.outputs.file_name }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "$ONELAKE_WORKSPACE" || -z "$ONELAKE_LAKEHOUSE" ]]; then
+            echo "Missing GitHub Actions secrets ONELAKE_WORKSPACE or ONELAKE_LAKEHOUSE."
+            exit 1
+          fi
+
+          # ONELAKE_WORKSPACE accepts the workspace ID or its exact name.
+          # ONELAKE_LAKEHOUSE is the exact Lakehouse item name, without the .Lakehouse suffix.
+          base_url="https://onelake.dfs.fabric.microsoft.com/$ONELAKE_WORKSPACE/$ONELAKE_LAKEHOUSE.Lakehouse"
+          relative_dir="Files/raw/$CATEGORY/$DATASET_ID"
+          destination="$base_url/$relative_dir/$FILE_NAME"
+          common_headers=(-H "Authorization: Bearer $ACCESS_TOKEN" -H "x-ms-version: 2021-06-08")
+
+          create_directory() {
+            local dir_path="$1"
+            local status
+            status="$(curl --silent --show-error -o /tmp/onelake-dir-response.txt -w "%{http_code}" \
+              -X PUT "$base_url/$dir_path?resource=directory" \
+              "${common_headers[@]}" -H "Content-Length: 0")"
+            if [[ "$status" != "201" && "$status" != "200" && "$status" != "409" ]]; then
+              cat /tmp/onelake-dir-response.txt
+              echo "Failed to create OneLake directory '$dir_path' (HTTP $status)."
+              exit 1
+            fi
+          }
+
+          create_directory "Files"
+          create_directory "Files/raw"
+          create_directory "Files/raw/$CATEGORY"
+          create_directory "$relative_dir"
+
+          file_size="$(wc -c < "$CSV_FILE" | tr -d ' ')"
+          if [[ "$file_size" -eq 0 ]]; then
+            echo "CSV file is empty."
+            exit 1
+          fi
+
+          # ADLS Gen2-compatible OneLake upload: create -> append -> flush.
+          curl --fail-with-body --silent --show-error \
+            -X PUT "$destination?resource=file&overwrite=true" \
+            "${common_headers[@]}" -H "Content-Length: 0" >/dev/null
+
+          curl --fail-with-body --silent --show-error \
+            -X PATCH "$destination?action=append&position=0" \
+            "${common_headers[@]}" -H "Content-Length: $file_size" \
+            --data-binary "@$CSV_FILE" >/dev/null
+
+          curl --fail-with-body --silent --show-error \
+            -X PATCH "$destination?action=flush&position=$file_size" \
+            "${common_headers[@]}" -H "Content-Length: 0" >/dev/null
+
+          echo "Uploaded $CSV_FILE to OneLake: $relative_dir/$FILE_NAME"
+
+      - name: Publish execution summary
+        if: always()
         env:
           DATASET_ID: ${{ steps.dataset.outputs.dataset_id }}
           CATEGORY: ${{ steps.dataset.outputs.category }}
-          DATASET_PATH: ${{ steps.dataset.outputs.dataset_path }}
+          CSV_FILE: ${{ steps.dataset.outputs.file_name }}
           COMMIT_SHA: ${{ steps.dataset.outputs.commit_sha }}
           REPOSITORY: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           {
-            echo "Dataset publication validated."
-            echo "dataset_id=$DATASET_ID"
-            echo "category=$CATEGORY"
-            echo "dataset_path=$DATASET_PATH"
-            echo "repository=$REPOSITORY"
-            echo "commit_sha=$COMMIT_SHA"
+            echo "## Dataset publication"
+            echo "- Repository: $REPOSITORY"
+            echo "- Dataset: $DATASET_ID"
+            echo "- Category: $CATEGORY"
+            echo "- CSV: $CSV_FILE"
+            echo "- Commit: $COMMIT_SHA"
+            echo "- Workflow run: $RUN_URL"
+            echo "- Destination: Files/raw/$CATEGORY/$DATASET_ID/"
           } >> "$GITHUB_STEP_SUMMARY"
-
-      # Control-M API invocation is intentionally not enabled yet:
-      # confirm the Control-M Automation API Swagger request body and runtime
-      # settings before adding the POST /automation-api/run/order step.
-      # Store credentials in GitHub Actions secrets; never commit them here.
