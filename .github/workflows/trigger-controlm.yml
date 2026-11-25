@@ -1,0 +1,89 @@
+# Copy into the DATASET repository (the one holding datasets/ and configs/).
+#
+# Role of GitHub in the pipeline: source of truth + trigger. It does NOT move data.
+# On every push that changes a dataset or its configs, this workflow tells Control-M
+# "order folder ITECAM_BULL_INTEGRATION for dataset X at commit Y". Control-M then triggers
+# Fabric, which retrieves the files from GitHub itself (pipeline PL_QSVM_Ingest).
+#
+# Repository secrets required:
+#   CTM_ENDPOINT  Automation API base URL, e.g. https://ctm-em.example:8443/automation-api
+#   CTM_API_KEY   Control-M API token (service account allowed to order ITECAM_BULL_INTEGRATION)
+#   CTM_SERVER    Control-M/Server name, e.g. ctm-server-01
+#
+# Network: GitHub-hosted runners must be able to reach CTM_ENDPOINT. If Control-M is
+# only reachable on the internal network, use a self-hosted runner (runs-on below).
+
+name: Trigger Control-M QSVM pipeline
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "datasets/**.csv"
+      - "configs/**"
+  workflow_dispatch:
+    inputs:
+      dataset:
+        description: "Dataset name (CSV file name without .csv), e.g. iris"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  order:
+    runs-on: ubuntu-latest   # or: [self-hosted, linux]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Find datasets to process
+        id: detect
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            names="${{ inputs.dataset }}"
+          else
+            before="${{ github.event.before }}"
+            if [ -z "$before" ] || [ "$before" = "0000000000000000000000000000000000000000" ]; then
+              changed=$(git ls-files datasets configs)
+            else
+              changed=$(git diff --name-only "$before" "${{ github.sha }}" -- datasets configs)
+            fi
+            names=$(echo "$changed" | sed -nE \
+              -e 's#^datasets/(.+/)?([^/]+)\.csv$#\2#p' \
+              -e 's#^configs/([^/]+)/.*$#\1#p' | sort -u | tr '\n' ' ')
+          fi
+          echo "names=$names" >> "$GITHUB_OUTPUT"
+          echo "Datasets to process: ${names:-<none>}"
+
+      - name: Order Control-M folder (one run per dataset)
+        if: steps.detect.outputs.names != ''
+        shell: bash
+        env:
+          CTM_ENDPOINT: ${{ secrets.CTM_ENDPOINT }}
+          CTM_API_KEY: ${{ secrets.CTM_API_KEY }}
+          CTM_SERVER: ${{ secrets.CTM_SERVER }}
+        run: |
+          set -euo pipefail
+          for ds in ${{ steps.detect.outputs.names }}; do
+            path=$(git ls-files "datasets/*${ds}.csv" | grep -E "(^|/)${ds}\.csv$" | head -n1 || true)
+            if [ -z "$path" ] || [ ! -f "configs/$ds/preprocessing.json" ] || [ ! -f "configs/$ds/qaptiva.json" ]; then
+              echo "::warning::Skipping $ds: needs datasets/**/$ds.csv, configs/$ds/preprocessing.json and configs/$ds/qaptiva.json"
+              continue
+            fi
+            run_id="${ds}-${GITHUB_SHA::7}-${GITHUB_RUN_NUMBER}"
+            payload=$(jq -n \
+              --arg ctm "$CTM_SERVER" --arg ds "$ds" --arg path "$path" \
+              --arg cfg "configs/$ds" --arg ref "$GITHUB_SHA" --arg rid "$run_id" \
+              '{ctm: $ctm, folder: "ITECAM_BULL_INTEGRATION", hold: false, ignoreCriteria: true, independentFlow: true,
+                variables: [{DATASET: $ds}, {DATASET_PATH: $path}, {CONFIG_DIR: $cfg},
+                            {GIT_REF: $ref}, {RUN_ID: $rid}]}')
+            echo "Ordering ITECAM_BULL_INTEGRATION for $ds (RUN_ID=$run_id)"
+            curl --fail-with-body -sS -X POST "$CTM_ENDPOINT/run/order" \
+              -H "x-api-key: $CTM_API_KEY" -H "Content-Type: application/json" \
+              -d "$payload"
+            echo
+          done
