@@ -1,0 +1,44 @@
+{
+  "mode": "noiseless",
+  "task": "regression",
+  "max_qubits": 10,
+  "max_train_samples": 80,
+  "max_test_samples": 40,
+  "seed": 42,
+  "feature_map": {
+    "type": "ZZ",
+    "reps": 2,
+    "entanglement": "linear",
+    "alpha": 0.25
+  },
+  "hyperparameters": {
+    "classification": {
+      "C": 1.0
+    },
+    "regression": {
+      "C": 1.0,
+      "epsilon": 0.1
+    }
+  },
+  "modes": {
+    "noiseless": {
+      "qpu": "LinAlg",
+      "nbshots": 0
+    },
+    "noisy": {
+      "qpu": "NoisyQProc",
+      "sim_method": "deterministic-vectorized",
+      "nbshots": 1024,
+      "feature_map": {
+        "reps": 1
+      },
+      "max_train_samples": 40,
+      "max_test_samples": 20,
+      "noise_model": {
+        "type": "depolarizing",
+        "p_1q": 0.001,
+        "p_2q": 0.01
+      }
+    }
+  }
+}

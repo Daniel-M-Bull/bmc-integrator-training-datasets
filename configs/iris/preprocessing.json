@@ -1,0 +1,13 @@
+{
+  "task": "classification",
+  "target": "species",
+  "drop_columns": [],
+  "max_categories": 10,
+  "n_components": 4,
+  "test_size": 0.25,
+  "seed": 42,
+  "feature_range": [
+    0.0,
+    3.141592653589793
+  ]
+}
